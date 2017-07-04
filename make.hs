@@ -22,16 +22,22 @@ import "process" System.Process (createProcess, proc, waitForProcess, ProcessHan
 import "base" Control.Monad (forM_)
 import "lens" Control.Lens (_4, (^.))
 
+import "base" Data.List (find)
+import "base" Data.Maybe (fromMaybe)
+
 
 main ∷ IO ()
 main = fmap (\x → if length x ≡ 0 then ["build"] else x) getArgs
-  >>= \(action : _) → case action of
-                           "clean"      → cleanTask
-                           "build"      → cleanTask >> buildTask
-                           "just-build" → buildTask
-                           "run"        → cleanTask >> buildTask >> runTask
-                           "help"       → forM_ ["clean", "build", "just-build", "run"] putStrLn
-                           _            → die $ "Unexpected action: " ⧺ action
+  >>= \(action : _) → fromMaybe (unknown action) $ snd <$> find (\x → action ≡ fst x) taskMap
+
+  where unknown = die ∘ ("Unexpected action: " ⧺)
+
+        taskMap = [ ("clean",      cleanTask)
+                  , ("build",      cleanTask >> buildTask)
+                  , ("just-build", buildTask)
+                  , ("run",        cleanTask >> buildTask >> runTask)
+                  , ("help",       mapM_ (putStrLn ∘ fst) taskMap)
+                  ]
 
 
 cleanTask ∷ IO ()
