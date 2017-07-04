@@ -1,0 +1,10 @@
+name:       test-shared-library
+version:    0.0.0
+synopsis:   Attempt to write shared library in Haskell
+author:     Viacheslav Lotsmanov
+maintainer: <lotsmanov89@gmail.com>
+copyright:  2017 Viacheslav Lotsmanov
+category:   System
+
+dependencies:
+  - base
