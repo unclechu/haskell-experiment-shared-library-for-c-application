@@ -36,7 +36,7 @@ main = fmap (\x → if length x ≡ 0 then ["build"] else x) getArgs
                   , ("build",      cleanTask >> buildTask)
                   , ("just-build", buildTask)
                   , ("run",        cleanTask >> buildTask >> runTask)
-                  , ("help",       mapM_ (putStrLn ∘ fst) taskMap)
+                  , ("help",       forM_ taskMap $ putStrLn ∘ fst)
                   ]
 
 
