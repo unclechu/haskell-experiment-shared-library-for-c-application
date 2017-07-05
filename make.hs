@@ -51,10 +51,10 @@ buildTask = do
   exec "stack" ["build", "--only-dependencies"]
   createDirectory "build"
 
-  forM_ ["Foo", "Bar"] $ \x →
-    runGhc ["-c", "-O", "src/" ⧺ x ⧺ ".hs", "-outputdir", "build", "-Wall", "-O2"]
+  forM_ ["Baz/Qux", "Foo", "Bar"] $ \x →
+    runGhc ["-c", "-O", "src/" ⧺ x ⧺ ".hs", "-ibuild", "-outputdir", "build", "-Wall", "-O2"]
 
-  runGhc [ "--make", "-no-hs-main", "-optc-O", "src/main.c"
+  runGhc [ "--make", "-no-hs-main", "-optc-O2", "-optc-O", "src/main.c"
          , "build/Foo.o", "build/Bar.o"
          , "-outputdir", "build", "-o", "build/main"
          ]
