@@ -11,8 +11,5 @@ import Baz.Qux (quux)
 
 foreign export ccall barForeign ∷ C.CInt → C.CInt
 
-bar ∷ Int → Int
-bar = (⋅ 4) ∘ quux
-
 barForeign ∷ C.CInt → C.CInt
-barForeign = fromIntegral ∘ bar ∘ fromIntegral
+barForeign = (⋅ 4) ∘ quux

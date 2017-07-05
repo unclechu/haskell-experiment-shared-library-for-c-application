@@ -6,7 +6,8 @@ module Baz.Qux
   ) where
 
 import "base-unicode-symbols" Prelude.Unicode
+import "base" Foreign.C.Types (CInt)
 
 
-quux ∷ Int → Int
+quux ∷ CInt → CInt
 quux = (⋅ 100)
