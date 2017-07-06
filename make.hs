@@ -63,6 +63,7 @@ main = fmap (\x → if length x ≡ 0 then ["build"] else x) getArgs
 
         taskMap ∷ [String] → [(String, IO ())]
         taskMap o@(withDeps → t) =
+
           [ ("clean",        cleanTask)
           , ("clean-app",    cleanAppTask)
           , ("clean-lib",    cleanLibTask)
@@ -167,10 +168,10 @@ runGhc ∷ [String] → IO ()
 runGhc = failCheck ∘ fmap (^. _4) ∘ createProcess ∘ proc "stack" ∘ \x → "ghc" : "--" : x
 
 failCheck ∷ IO ProcessHandle → IO ()
-failCheck m = m >>= waitForProcess >>= \x → if x ≡ ExitSuccess then pure () else exitWith x
+failCheck = (>>= failProtect)
 
 failProtect ∷ ProcessHandle → IO ()
-failProtect = failCheck ∘ pure
+failProtect = waitForProcess >=> \x → if x ≡ ExitSuccess then pure () else exitWith x
 
 ignoreDoesNotExistsErr ∷ IO () → IO ()
 ignoreDoesNotExistsErr = (`catchIOError` \e → if isDoesNotExistError e then pure () else ioError e)
