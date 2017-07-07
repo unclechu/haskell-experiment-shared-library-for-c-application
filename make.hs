@@ -37,7 +37,7 @@ import "directory" System.Directory ( createDirectoryIfMissing
                                     )
 
 import "base" Control.Monad (forM_, forM, mapM_, mapM, (>=>))
-import "lens" Control.Lens (_4, (^.), (&))
+import "lens" Control.Lens (_4, (^.), (&), (<&>))
 
 import "base"       Data.List (find, intercalate)
 import "base"       Data.Maybe (fromMaybe)
@@ -54,9 +54,9 @@ buildLibDir = buildDir </> "shared-library"
 
 
 main ∷ IO ()
-main = fmap (\x → if length x ≡ 0 then ["build"] else x) getArgs
-  >>= \(action : opts) → fromMaybe (unknown action) $
-          snd <$> find (\x → action ≡ fst x) (taskMap opts)
+main = getArgs <&> (\x → if length x ≡ 0 then ["build"] else x)
+         >>= \(action : opts) → fromMaybe (unknown action) $
+               snd <$> find (\x → action ≡ fst x) (taskMap opts)
 
   where withDeps opts deps task = if "--no-deps" ∉ opts then deps >> task else task
         unknown = die ∘ ("Unexpected action: " ⧺)
@@ -80,6 +80,7 @@ main = fmap (\x → if length x ≡ 0 then ["build"] else x) getArgs
 
           , ("help",         mapM_ putStrLn $ "--no-deps" : map fst (taskMap o))
           ]
+
 
 cleanTask, cleanAppTask, cleanLibTask ∷ IO ()
 cleanTask = forM_ [buildDir, distDir] $ ignoreDoesNotExistsErr ∘ removeDirectoryRecursive
@@ -106,7 +107,7 @@ buildAppTask = do
   forM_ ["Foo", "Bar"] $ \x →
     runGhc [ "-c", "-O", srcDir </> x <.> "hs"
            , "--make", "-i" ⧺ srcDir, "-outputdir", buildAppDir
-           , "-Wall", "-O2", "-optc-O2"
+           , "-Wall", "-O2"
            ]
 
   runGhc $ let ob x = buildAppDir </> x <.> "o"
@@ -124,11 +125,19 @@ buildLibTask = do
   createDirectoryIfMissing True buildLibDir
   createDirectoryIfMissing True distDir
 
-  forM_ ["Foo", "Bar"] $ \x →
+  forM_ ["Foo", "Bar"] $ \x → do
+
+    runGhc [ "-dynamic", "-shared", "-fPIC", "-optc-O2", "-optc-DMODULE=" ⧺ x
+           , srcDir </> "lib-autoinit" <.> "c"
+           , "-outputdir", buildLibDir
+           ]
+
     runGhc [ "--make", "-dynamic", "-shared", "-fPIC"
            , srcDir </> x <.> "hs"
+           , buildLibDir </> srcDir </> "lib-autoinit" <.> "o"
            , "-o", distDir </> "lib" ⧺ map toLower x <.> "so"
            , "-i" ⧺ srcDir, "-outputdir", buildLibDir
+           , "-Wall", "-O2"
            ]
 
   exec $ proc "gcc" $ ["-O2", "-I" ⧺ ghcIncludePath paths, "-L" ⧺ distDir, "-lfoo"{-, "-ldl"-}]
@@ -138,7 +147,6 @@ buildLibTask = do
                           link = drop 3 ∘ dropExtension
 
                        in foldr reducer [] (packagesLibsPaths paths)
-
 
 
 runAppTask ∷ IO ()
