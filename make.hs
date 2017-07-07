@@ -140,13 +140,20 @@ buildLibTask = do
            , "-Wall", "-O2"
            ]
 
-  exec $ proc "gcc" $ ["-O2", "-I" ⧺ ghcIncludePath paths, "-L" ⧺ distDir, "-lfoo"{-, "-ldl"-}]
-                    ⧺ [srcDir </> "lib-test" <.> "c", "-o", distDir </> "lib-test"]
+  let libsFlags = let reducer (dir, (link → l)) acc = ("-L" ⧺ dir) : ("-l" ⧺ l) : acc
+                      link = drop 3 ∘ dropExtension
 
-                    ⧺ let reducer (dir, (link → l)) acc = ("-L" ⧺ dir) : ("-l" ⧺ l) : acc
-                          link = drop 3 ∘ dropExtension
+                   in foldr reducer [] (packagesLibsPaths paths)
 
-                       in foldr reducer [] (packagesLibsPaths paths)
+  forM_ [ ("lib-test",   ["-L" ⧺ distDir, "-lfoo"])
+        , ("lib-test-2", ["-ldl"])
+        ] $ \(file, args) →
+
+    exec $ proc "gcc" $ [ "-O2", "-I" ⧺ ghcIncludePath paths
+                        , srcDir </> file <.> "c"
+                        , "-o", distDir </> file
+                        ] ⧺ args ⧺ libsFlags
+
 
 
 runAppTask ∷ IO ()
@@ -160,13 +167,14 @@ runLibTestTask ∷ IO ()
 runLibTestTask = do
 
   paths ← getPaths
-  putStrLn "≡ Running 'lib-test'… ≡"
 
   newEnv ← let ldDirs = intercalate ":" $ distDir : map fst (packagesLibsPaths paths)
             in insert "LD_LIBRARY_PATH" ldDirs ∘ fromList <$> getEnvironment
 
-  exec (proc (distDir </> "lib-test") []) { env = Just $ toList newEnv }
-  putStrLn "≡ End of 'lib-test' ≡"
+  forM_ ["lib-test", "lib-test-2"] $ \x → do
+    putStrLn $ "≡ Running '" ⧺ x ⧺ "'… ≡"
+    exec (proc (distDir </> x) []) { env = Just $ toList newEnv }
+    putStrLn $ "≡ End of '" ⧺ x ⧺ "' ≡"
 
 
 exec ∷ CreateProcess → IO ()
