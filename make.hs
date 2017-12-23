@@ -1,19 +1,21 @@
 #!/usr/bin/env stack
 {- stack runghc
- --resolver=lts-8.21
+ --resolver=lts-10.0
+ --install-ghc
  --package base-unicode-symbols
  --package directory
  --package filepath
  --package process
  --package lens
  --package containers
+ --package qm-interpolated-string
  -}
 
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE PackageImports #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 import "base-unicode-symbols" Prelude.Unicode
 
@@ -21,7 +23,7 @@ import "base"     System.Exit (die, exitWith, ExitCode (ExitSuccess))
 import "base"     System.Environment (getArgs, getEnvironment)
 import "base"     System.IO.Error (isDoesNotExistError, catchIOError, ioError)
 import "base"     System.IO (hGetLine)
-import "filepath" System.FilePath (dropExtension, (</>), (<.>))
+import "filepath" System.FilePath (dropExtension, takeDirectory, (</>), (<.>))
 
 import "process" System.Process ( StdStream (CreatePipe)
                                 , CreateProcess (env, std_out)
@@ -44,6 +46,8 @@ import "base"       Data.Maybe (fromMaybe)
 import "base"       Data.Char (toLower)
 import "containers" Data.Map (fromList, toList, insert)
 
+import "qm-interpolated-string" Text.InterpolatedString.QM (qm)
+
 
 srcDir, buildDir, distDir, buildAppDir, buildLibDir ∷ String
 srcDir      = "src"
@@ -55,8 +59,8 @@ buildLibDir = buildDir </> "shared-library"
 
 main ∷ IO ()
 main = getArgs <&> (\x → if length x ≡ 0 then ["build"] else x)
-         >>= \(action : opts) → fromMaybe (unknown action) $
-               snd <$> find (\x → action ≡ fst x) (taskMap opts)
+         >>= \(action : opts) → maybe (unknown action) snd
+                              $ find (\x → action ≡ fst x) (taskMap opts)
 
   where withDeps opts deps task = if "--no-deps" ∉ opts then deps >> task else task
         unknown = die ∘ ("Unexpected action: " ⧺)
@@ -93,8 +97,8 @@ cleanLibTask = do
 
   ignoreDoesNotExistsErr $ removeDirectoryRecursive buildLibDir
 
-  ["libfoo" <.> "so", "libbar" <.> "so", "lib-test"]
-    & mapM_ (ignoreDoesNotExistsErr ∘ removeFile ∘ (distDir </>))
+  mapM_ (ignoreDoesNotExistsErr ∘ removeFile ∘ (distDir </>))
+        ["libfoo" <.> "so", "libbar" <.> "so", "lib-test"]
 
 
 buildAppTask ∷ IO ()
@@ -127,7 +131,9 @@ buildLibTask = do
 
   forM_ ["Foo", "Bar"] $ \x → do
 
-    runGhc [ "-dynamic", "-shared", "-fPIC", "-optc-O2", "-optc-DMODULE=" ⧺ x
+    runGhc [ "-dynamic", "-shared", "-fPIC"
+           , "-optc-O2"
+           , "-optc-DMODULE=" ⧺ x
            , srcDir </> "lib-autoinit" <.> "c"
            , "-outputdir", buildLibDir
            ]
@@ -140,7 +146,7 @@ buildLibTask = do
            , "-Wall", "-O2"
            ]
 
-  let libsFlags = let reducer (dir, (link → l)) acc = ("-L" ⧺ dir) : ("-l" ⧺ l) : acc
+  let libsFlags = let reducer (dir, link → l) acc = ("-L" ⧺ dir) : ("-l" ⧺ l) : acc
                       link = drop 3 ∘ dropExtension
 
                    in foldr reducer [] (packagesLibsPaths paths)
@@ -158,9 +164,9 @@ buildLibTask = do
 
 runAppTask ∷ IO ()
 runAppTask = do
-  putStrLn "≡ Running 'app'… ≡"
+  logRun True "app"
   exec $ proc (distDir </> "app") []
-  putStrLn "≡ End of 'app' ≡"
+  logRun False "app"
 
 
 runLibTestTask ∷ IO ()
@@ -172,16 +178,20 @@ runLibTestTask = do
             in insert "LD_LIBRARY_PATH" ldDirs ∘ fromList <$> getEnvironment
 
   forM_ ["lib-test", "lib-test-2"] $ \x → do
-    putStrLn $ "≡ Running '" ⧺ x ⧺ "'… ≡"
+    logRun True x
     exec (proc (distDir </> x) []) { env = Just $ toList newEnv }
-    putStrLn $ "≡ End of '" ⧺ x ⧺ "' ≡"
+    logRun False x
 
 
 exec ∷ CreateProcess → IO ()
-exec = failCheck ∘ fmap (^. _4) ∘ createProcess
+exec = createProcess • fmap (^. _4) • failCheck
 
 runGhc ∷ [String] → IO ()
-runGhc = failCheck ∘ fmap (^. _4) ∘ createProcess ∘ proc "stack" ∘ \x → "ghc" : "--" : x
+runGhc = (\x → "ghc" : "--" : x)
+       • proc "stack"
+       • createProcess
+       • fmap (^. _4)
+       • failCheck
 
 failCheck ∷ IO ProcessHandle → IO ()
 failCheck = (>>= failProtect)
@@ -196,15 +206,16 @@ ignoreDoesNotExistsErr = (`catchIOError` \e → if isDoesNotExistError e then pu
 getPaths ∷ IO Paths
 getPaths = do
 
-  programs ← getOutput "stack" ["path", "--programs"]
-  ghcVer   ← getOutput "stack" ["exec", "ghc-pkg", "latest", "ghc"]
+  ghcBin ← getOutput "stack" ["path", "--compiler-exe"]
+  ghcVer ← getOutput "stack" ["exec", "ghc-pkg", "latest", "ghc"]
 
-  let ghcDir = programs </> ghcVer </> "lib" </> ghcVer
+  let ghcDir = (takeDirectory ∘ takeDirectory) ghcBin </> "lib" </> ghcVer
       sfx = (⧺ '-' : filter (≢ '-') ghcVer)
 
-  libs ← forM ["base", "integer-gmp", "ghc-prim"] $
-    fmap (\x → (ghcDir </> x, sfx ("libHS" ⧺ x) <.> "so")) ∘
-      getOutput "stack" ∘ (\x → ["exec", "ghc-pkg", "latest", x])
+  libs ← forM ["base", "integer-gmp", "ghc-prim"]
+       $ (\x → ["exec", "ghc-pkg", "latest", x]) -- lastest version of package
+       • getOutput "stack"
+       • fmap (\x → (ghcDir </> x, sfx ("libHS" ⧺ x) <.> "so"))
 
   return Paths { ghcIncludePath    = ghcDir </> "include"
                , packagesLibsPaths = (ghcDir </> "rts", sfx "libHSrts" <.> "so") : libs
@@ -216,7 +227,19 @@ getPaths = do
           failProtect hProc
           hGetLine hOut
 
-data Paths = Paths { ghcIncludePath    ∷ String
-                   , packagesLibsPaths ∷ [(String, String)]
-                   }
-                     deriving (Show, Eq)
+data Paths
+  = Paths
+  { ghcIncludePath    ∷ String
+  , packagesLibsPaths ∷ [(String, String)]
+  } deriving (Show, Eq)
+
+
+logRun ∷ Bool → String → IO ()
+logRun isStart appName =
+  putStrLn
+    [qm| {if isStart then lb else ""}
+         ≡ {if isStart then "Running" else "End of"} '{appName}'{if isStart then "…" else ""} ≡
+         {if isStart then "" else lb} |]
+  where lb = "\n"
+
+(•) ∷ (a → b) → (b → c) → (a → c) ; (•) = flip (∘) ; infixl 9 • ; {-# INLINE (•) #-}
