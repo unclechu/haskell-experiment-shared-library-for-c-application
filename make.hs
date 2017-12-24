@@ -125,20 +125,21 @@ buildLibTask ∷ IO ()
 buildLibTask = do
 
   paths ← getPaths
-  exec $ proc "stack" ["build", "--only-dependencies"]
+  -- exec $ proc "stack" ["build", "--only-dependencies"]
   createDirectoryIfMissing True buildLibDir
   createDirectoryIfMissing True distDir
 
   forM_ ["Foo", "Bar"] $ \x → do
 
-    runGhc [ "-dynamic", "-shared", "-fPIC"
+    runGhc [ "-static", "-shared", "-fPIC"
            , "-optc-O2"
            , "-optc-DMODULE=" ⧺ x
            , srcDir </> "lib-autoinit" <.> "c"
            , "-outputdir", buildLibDir
            ]
 
-    runGhc [ "--make", "-dynamic", "-shared", "-fPIC"
+    runGhc [ "--make", "-static", "-shared", "-fPIC"
+           -- , "-package", "ghc"
            , srcDir </> x <.> "hs"
            , buildLibDir </> srcDir </> "lib-autoinit" <.> "o"
            , "-o", distDir </> "lib" ⧺ map toLower x <.> "so"
@@ -146,6 +147,7 @@ buildLibTask = do
            , "-Wall", "-O2"
            ]
 
+{-
   let libsFlags = let reducer (dir, link → l) acc = ("-L" ⧺ dir) : ("-l" ⧺ l) : acc
                       link = drop 3 ∘ dropExtension
 
@@ -159,6 +161,7 @@ buildLibTask = do
                         , srcDir </> file <.> "c"
                         , "-o", distDir </> file
                         ] ⧺ args ⧺ libsFlags
+-}
 
 
 
@@ -187,11 +190,14 @@ exec ∷ CreateProcess → IO ()
 exec = createProcess • fmap (^. _4) • failCheck
 
 runGhc ∷ [String] → IO ()
+runGhc = proc "ghc" • createProcess • fmap (^. _4) • failCheck
+{-
 runGhc = (\x → "ghc" : "--" : x)
        • proc "stack"
        • createProcess
        • fmap (^. _4)
        • failCheck
+-}
 
 failCheck ∷ IO ProcessHandle → IO ()
 failCheck = (>>= failProtect)
