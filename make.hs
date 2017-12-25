@@ -16,13 +16,14 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE LambdaCase #-}
 
 import "base-unicode-symbols" Prelude.Unicode
 
 import "base"     System.Exit (die, exitWith, ExitCode (ExitSuccess))
 import "base"     System.Environment (getArgs, getEnvironment)
 import "base"     System.IO.Error (isDoesNotExistError, catchIOError, ioError)
-import "base"     System.IO (hGetLine)
+import "base"     System.IO (hGetLine, hGetContents)
 import "filepath" System.FilePath (dropExtension, takeDirectory, (</>), (<.>))
 
 import "process" System.Process ( StdStream (CreatePipe)
@@ -38,10 +39,11 @@ import "directory" System.Directory ( createDirectoryIfMissing
                                     , removeFile
                                     )
 
+import "base" Control.Arrow ((&&&))
 import "base" Control.Monad (forM_, forM, mapM_, mapM, (>=>))
 import "lens" Control.Lens (_4, (^.), (&), (<&>))
 
-import "base"       Data.List (find, intercalate)
+import "base"       Data.List (find, intercalate, isSuffixOf, isInfixOf)
 import "base"       Data.Maybe (fromMaybe)
 import "base"       Data.Char (toLower)
 import "containers" Data.Map (fromList, toList, insert)
@@ -58,9 +60,9 @@ buildLibDir = buildDir </> "shared-library"
 
 
 main ∷ IO ()
-main = getArgs <&> (\x → if length x ≡ 0 then ["build"] else x)
+main = getArgs <&> (\case [] → ["build"] ; x → x)
          >>= \(action : opts) → maybe (unknown action) snd
-                              $ find (\x → action ≡ fst x) (taskMap opts)
+                              $ find (fst • (≡ action)) (taskMap opts)
 
   where withDeps opts deps task = if "--no-deps" ∉ opts then deps >> task else task
         unknown = die ∘ ("Unexpected action: " ⧺)
@@ -104,7 +106,7 @@ cleanLibTask = do
 buildAppTask ∷ IO ()
 buildAppTask = do
 
-  exec $ proc "stack" ["build", "--only-dependencies"]
+  -- exec $ proc "stack" ["build", "--only-dependencies"]
   createDirectoryIfMissing True buildAppDir
   createDirectoryIfMissing True distDir
 
@@ -125,27 +127,30 @@ buildLibTask ∷ IO ()
 buildLibTask = do
 
   paths ← getPaths
+  let ghc = runGhc ∘ ([qm|-package-db={cabalSandboxPkgPath paths}|] :) ∘ ("-package=ghc" :)
+
   -- exec $ proc "stack" ["build", "--only-dependencies"]
   createDirectoryIfMissing True buildLibDir
   createDirectoryIfMissing True distDir
 
   forM_ ["Foo", "Bar"] $ \x → do
 
-    runGhc [ "-static", "-shared", "-fPIC"
-           , "-optc-O2"
-           , "-optc-DMODULE=" ⧺ x
-           , srcDir </> "lib-autoinit" <.> "c"
-           , "-outputdir", buildLibDir
-           ]
+    ghc [ "-static", "-shared", "-fPIC"
+        , "-optc-O2"
+        , "-optc-DMODULE=" ⧺ x
+        , srcDir </> "lib-autoinit" <.> "c"
+        , "-outputdir", buildLibDir
+        ]
 
-    runGhc [ "--make", "-static", "-shared", "-fPIC"
-           -- , "-package", "ghc"
-           , srcDir </> x <.> "hs"
-           , buildLibDir </> srcDir </> "lib-autoinit" <.> "o"
-           , "-o", distDir </> "lib" ⧺ map toLower x <.> "so"
-           , "-i" ⧺ srcDir, "-outputdir", buildLibDir
-           , "-Wall", "-O2"
-           ]
+    ghc [ "--make", "-static", "-shared", "-fPIC"
+        -- , "-package", "ghc"
+        , srcDir </> x <.> "hs"
+        , buildLibDir </> srcDir </> "lib-autoinit" <.> "o"
+        , "-o", distDir </> "lib" ⧺ map toLower x <.> "so"
+        , "-i" ⧺ srcDir, "-outputdir", buildLibDir
+        , "-Wall", "-O2"
+        , "-optl-Wl,-s", "-funfolding-use-threshold=16", "-optc-O3", "-optc-ffast-math"
+        ]
 
 {-
   let libsFlags = let reducer (dir, link → l) acc = ("-L" ⧺ dir) : ("-l" ⧺ l) : acc
@@ -175,6 +180,8 @@ runAppTask = do
 runLibTestTask ∷ IO ()
 runLibTestTask = do
 
+  pure ()
+  {-
   paths ← getPaths
 
   newEnv ← let ldDirs = intercalate ":" $ distDir : map fst (packagesLibsPaths paths)
@@ -184,6 +191,7 @@ runLibTestTask = do
     logRun True x
     exec (proc (distDir </> x) []) { env = Just $ toList newEnv }
     logRun False x
+  -}
 
 
 exec ∷ CreateProcess → IO ()
@@ -191,13 +199,6 @@ exec = createProcess • fmap (^. _4) • failCheck
 
 runGhc ∷ [String] → IO ()
 runGhc = proc "ghc" • createProcess • fmap (^. _4) • failCheck
-{-
-runGhc = (\x → "ghc" : "--" : x)
-       • proc "stack"
-       • createProcess
-       • fmap (^. _4)
-       • failCheck
--}
 
 failCheck ∷ IO ProcessHandle → IO ()
 failCheck = (>>= failProtect)
@@ -212,6 +213,7 @@ ignoreDoesNotExistsErr = (`catchIOError` \e → if isDoesNotExistError e then pu
 getPaths ∷ IO Paths
 getPaths = do
 
+  {-
   ghcBin ← getOutput "stack" ["path", "--compiler-exe"]
   ghcVer ← getOutput "stack" ["exec", "ghc-pkg", "latest", "ghc"]
 
@@ -226,17 +228,25 @@ getPaths = do
   return Paths { ghcIncludePath    = ghcDir </> "include"
                , packagesLibsPaths = (ghcDir </> "rts", sfx "libHSrts" <.> "so") : libs
                }
+  -}
 
-  where getOutput ∷ FilePath → [String] → IO String
+  [pkg] ←
+    getOutput "cabal" ["sandbox", "hc-pkg", "list"]
+       <&> filter ((isSuffixOf "packages.conf.d" &&& isInfixOf "/.cabal-sandbox/") • uncurry (&&))
+
+  pure Paths { cabalSandboxPkgPath = pkg }
+
+  where getOutput ∷ FilePath → [String] → IO [String]
         getOutput bin args = do
           (_, Just hOut, _, hProc) ← createProcess (proc bin args) { std_out = CreatePipe }
           failProtect hProc
-          hGetLine hOut
+          hGetContents hOut <&> lines <&> \x → if null (last x) then init x else x
 
 data Paths
   = Paths
-  { ghcIncludePath    ∷ String
-  , packagesLibsPaths ∷ [(String, String)]
+  -- { ghcIncludePath    ∷ String
+  -- , packagesLibsPaths ∷ [(String, String)]
+  { cabalSandboxPkgPath ∷ String
   } deriving (Show, Eq)
 
 
