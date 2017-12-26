@@ -12,7 +12,7 @@ RUN apt-get update -y \
 ENV LANG='en_US.UTF-8' LANGUAGE='en_US:en' LC_ALL='en_US.UTF-8'
 
 # see https://stackoverflow.com/a/28131655/774228
-# for info about customizations in 'build.mk' and 'EXTRA_CONFIGURE_OPTS'
+# for info about customizations in 'build.mk'
 COPY my-build.mk /my-build.mk
 
 RUN mkdir /compile && cd /compile \
