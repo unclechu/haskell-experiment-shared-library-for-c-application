@@ -89,7 +89,9 @@ main = getArgs <&> (\case [] → ["build"] ; x → x)
 
 
 cleanTask, cleanAppTask, cleanLibTask ∷ IO ()
-cleanTask = forM_ [buildDir, distDir] $ ignoreDoesNotExistsErr ∘ removeDirectoryRecursive
+cleanTask = do
+  forM_ [buildDir, distDir] $ ignoreDoesNotExistsErr ∘ removeDirectoryRecursive
+  ignoreDoesNotExistsErr $ removeFile "a.out"
 
 cleanAppTask = do
   ignoreDoesNotExistsErr $ removeDirectoryRecursive buildAppDir
@@ -97,7 +99,9 @@ cleanAppTask = do
 
 cleanLibTask = do
 
-  ignoreDoesNotExistsErr $ removeDirectoryRecursive buildLibDir
+  ignoreDoesNotExistsErr $ do
+    removeFile "a.out"
+    removeDirectoryRecursive buildLibDir
 
   mapM_ (ignoreDoesNotExistsErr ∘ removeFile ∘ (distDir </>))
         ["libfoo" <.> "so", "libbar" <.> "so", "lib-test"]

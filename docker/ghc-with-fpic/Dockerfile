@@ -20,9 +20,7 @@ RUN mkdir /compile && cd /compile \
 	&& tar -xvf ghc-8.2.2-src.tar.xz \
 	&& rm ghc-8.2.2-src.tar.xz \
 	&& cd ghc-8.2.2/ \
-	&& export \
-		EXTRA_CONFIGURE_OPTS="--disable-library-profiling --enable-shared" \
-	&& ./configure --prefix=/ghc-8.2.2-fpic \
+	&& ./configure --prefix=/ghc-8.2.2-fpic --disable-library-profiling --enable-shared \
 	&& cp /my-build.mk mk/build.mk \
 	&& make install \
 	&& cd /usr/local/bin \
