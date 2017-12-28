@@ -22,8 +22,8 @@ docker run -it --volume="`pwd`:/mnt" --name=some-name ghc-with-fpic
 cd /mnt
 cabal update
 cabal sandbox init
-cabal install --enable-shared --ghc-option=-fPIC happy alex
-cabal install --enable-shared --ghc-option=-fPIC base-unicode-symbols filepath process directory lens containers qm-interpolated-string
+cabal install --ghc-option=-fPIC --ghc-option=-optc-fPIC happy alex
+cabal install --ghc-option=-fPIC --ghc-option=-optc-fPIC base-unicode-symbols filepath process directory lens containers qm-interpolated-string
 ```
 
 Build libs (`make.pl` is just a wrapper for `make.hs` to start with package database from

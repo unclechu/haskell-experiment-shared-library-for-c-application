@@ -109,6 +109,7 @@ cleanLibTask = do
 
 buildAppTask ∷ IO ()
 buildAppTask = do
+  error "TODO"
 
   -- exec $ proc "stack" ["build", "--only-dependencies"]
   createDirectoryIfMissing True buildAppDir
@@ -133,27 +134,23 @@ buildLibTask = do
   paths ← getPaths
   let ghc = runGhc ∘ ([qm|-package-db={cabalSandboxPkgPath paths}|] :) ∘ ("-package=ghc" :)
 
-  -- exec $ proc "stack" ["build", "--only-dependencies"]
   createDirectoryIfMissing True buildLibDir
   createDirectoryIfMissing True distDir
 
   forM_ ["Foo", "Bar"] $ \x → do
 
-    ghc [ "-static", "-shared", "-fPIC"
-        , "-optc-O2"
+    ghc [ "-static", "-shared", "-fPIC", "-optc-fPIC", "-optc-O2"
         , "-optc-DMODULE=" ⧺ x
         , srcDir </> "lib-autoinit" <.> "c"
         , "-outputdir", buildLibDir
         ]
 
-    ghc [ "--make", "-static", "-shared", "-fPIC"
-        -- , "-package", "ghc"
+    ghc [ "--make", "-static", "-shared", "-fPIC", "-optc-fPIC"
         , srcDir </> x <.> "hs"
         , buildLibDir </> srcDir </> "lib-autoinit" <.> "o"
         , "-o", distDir </> "lib" ⧺ map toLower x <.> "so"
         , "-i" ⧺ srcDir, "-outputdir", buildLibDir
         , "-Wall", "-O2"
-        , "-optl-Wl,-s", "-funfolding-use-threshold=16", "-optc-O3", "-optc-ffast-math"
         ]
 
 {-
@@ -171,7 +168,6 @@ buildLibTask = do
                         , "-o", distDir </> file
                         ] ⧺ args ⧺ libsFlags
 -}
-
 
 
 runAppTask ∷ IO ()

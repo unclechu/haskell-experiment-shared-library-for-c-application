@@ -20,8 +20,11 @@ RUN mkdir /compile && cd /compile \
 	&& tar -xvf ghc-8.2.2-src.tar.xz \
 	&& rm ghc-8.2.2-src.tar.xz \
 	&& cd ghc-8.2.2/ \
-	&& ./configure --prefix=/ghc-8.2.2-fpic --disable-library-profiling --enable-shared \
+	&& ./configure --prefix=/ghc-8.2.2-fpic \
+		--disable-library-profiling \
+		--enable-shared \
 	&& cp /my-build.mk mk/build.mk \
 	&& make install \
+	&& rm -rf /compile /my-build.mk \
 	&& cd /usr/local/bin \
 	&& ls /ghc-8.2.2-fpic/bin/ | xargs -I{} ln -s /ghc-8.2.2-fpic/bin/{}
